@@ -57,6 +57,7 @@ services:
       timeout: 5s
   nisshi:
     image: ${NISSHI_IMAGE}
+    pull_policy: always
     restart: unless-stopped
     environment:
       RUST_BACKTRACE: ${RUST_BACKTRACE}
