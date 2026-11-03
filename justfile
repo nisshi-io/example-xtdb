@@ -5,7 +5,7 @@ default: fmt build test clippy
 cargo-build +args:
     cargo build {{args}}
 
-build: (cargo-build "--bin" "tansu")
+build: (cargo-build "--bin" "nisshi")
 
 release: (cargo-build "--release" "--workspace" "--all-targets")
 
@@ -22,7 +22,7 @@ miri:
     cargo +nightly miri test --no-fail-fast --all-features
 
 docker-build:
-    docker build --tag ghcr.io/tansu-io/tansu --no-cache --progress plain --platform linux/amd64,linux/arm64 --debug .
+    docker build --tag ghcr.io/nisshi-io/solace-nisshi --no-cache --progress plain --platform linux/amd64,linux/arm64 --debug .
 
 minio-up: (docker-compose-up "minio")
 
@@ -33,7 +33,7 @@ minio-mc +args:
 
 minio-local-alias: (minio-mc "alias" "set" "local" "http://localhost:9000" "minioadmin" "minioadmin")
 
-minio-tansu-bucket: (minio-mc "mb" "local/tansu")
+minio-nisshi-bucket: (minio-mc "mb" "local/nisshi")
 
 minio-xtdb-bucket: (minio-mc "mb" "local/xtdb")
 
@@ -41,9 +41,9 @@ minio-lake-bucket: (minio-mc "mb" "local/lake")
 
 minio-ready-local: (minio-mc "ready" "local")
 
-tansu-up: (docker-compose-up "tansu")
+nisshi-up: (docker-compose-up "nisshi")
 
-tansu-down: (docker-compose-down "tansu")
+nisshi-down: (docker-compose-down "nisshi")
 
 xtdb-up: (docker-compose-up "xtdb")
 
@@ -104,10 +104,10 @@ docker-run-postgres:
         postgres:16.4
 
 docker-run:
-    docker run --detach --name tansu --publish 9092:9092 tansu
+    docker run --detach --name nisshi --publish 9092:9092 nisshi
 
 docker-rm-f:
-    docker rm --force tansu
+    docker rm --force nisshi
 
 list-topics:
     kafka-topics --bootstrap-server ${ADVERTISED_LISTENER} --list
@@ -146,19 +146,19 @@ test-reset-offsets-to-earliest:
     kafka-consumer-groups --bootstrap-server ${ADVERTISED_LISTENER} --group test-consumer-group --topic test:0 --reset-offsets --to-earliest --execute
 
 topic-create topic *args:
-    target/debug/tansu topic create {{topic}} {{args}}
+    target/debug/nisshi topic create {{topic}} {{args}}
 
 topic-delete topic:
-    target/debug/tansu topic delete {{topic}}
+    target/debug/nisshi topic delete {{topic}}
 
 cat-produce topic file:
-    target/debug/tansu cat produce {{topic}} {{file}}
+    target/debug/nisshi cat produce {{topic}} {{file}}
 
 cat-consume topic:
-    target/debug/tansu cat consume {{topic}} --max-wait-time-ms=5000
+    target/debug/nisshi cat consume {{topic}} --max-wait-time-ms=5000
 
 generator topic *args:
-    target/debug/tansu generator {{args}} {{topic}} 2>&1 >generator.log
+    target/debug/nisshi generator {{args}} {{topic}} 2>&1 >generator.log
 
 duckdb-k-unnest-v-parquet topic:
     duckdb -init duckdb-init.sql :memory: "SELECT key,unnest(value) FROM '{{replace(env("DATA_LAKE"), "file://./", "")}}/{{topic}}/*/*.parquet'"
@@ -177,11 +177,11 @@ person-topic-populate: (cat-produce "person" "etc/data/persons.json")
 
 # produce valid data, that is accepted by the broker
 person-topic-produce-valid:
-    echo '{"key": "345-67-6543", "value": {"firstName": "John", "lastName": "Doe", "age": 21}}' | target/debug/tansu cat produce person
+    echo '{"key": "345-67-6543", "value": {"firstName": "John", "lastName": "Doe", "age": 21}}' | target/debug/nisshi cat produce person
 
 # produce invalid data, that is rejected by the broker
 person-topic-produce-invalid:
-    echo '{"key": "ABC-12-4242", "value": {"firstName": "John", "lastName": "Doe", "age": -1}}' | target/debug/tansu cat produce person
+    echo '{"key": "ABC-12-4242", "value": {"firstName": "John", "lastName": "Doe", "age": -1}}' | target/debug/nisshi cat produce person
 
 # person parquet
 person-duckdb-parquet: (duckdb-k-unnest-v-parquet "person")
@@ -207,13 +207,13 @@ search-topic-delete: (topic-delete "search")
 
 # produce data to search topic with etc/schema/search.proto
 search-topic-produce:
-    echo '{"value": {"query": "abc/def", "page_number": 6, "results_per_page": 13, "corpus": "CORPUS_WEB"}}' | target/debug/tansu cat produce search
+    echo '{"value": {"query": "abc/def", "page_number": 6, "results_per_page": 13, "corpus": "CORPUS_WEB"}}' | target/debug/nisshi cat produce search
 
 # search parquet
 search-duckdb-parquet: (duckdb-parquet "search")
 
-tansu-server:
-    target/debug/tansu broker --schema-registry file://./etc/schema 2>&1 | tee tansu.log
+nisshi-server:
+    target/debug/nisshi broker --schema-registry file://./etc/schema 2>&1 | tee nisshi.log
 
 kafka-proxy:
     docker run -d -p 19092:9092 apache/kafka:3.9.0
@@ -261,41 +261,41 @@ all: test miri
 flamegraph *args:
     cargo flamegraph {{args}}
 
-benchmark-flamegraph: build docker-compose-down minio-up minio-ready-local minio-local-alias minio-tansu-bucket prometheus-up grafana-up
-	flamegraph -- target/debug/tansu broker 2>&1  | tee tansu.log
+benchmark-flamegraph: build docker-compose-down minio-up minio-ready-local minio-local-alias minio-nisshi-bucket prometheus-up grafana-up
+	flamegraph -- target/debug/nisshi broker 2>&1  | tee nisshi.log
 
-benchmark: build docker-compose-down minio-up minio-ready-local minio-local-alias minio-tansu-bucket prometheus-up grafana-up
-	target/debug/tansu broker 2>&1  | tee tansu.log
+benchmark: build docker-compose-down minio-up minio-ready-local minio-local-alias minio-nisshi-bucket prometheus-up grafana-up
+	target/debug/nisshi broker 2>&1  | tee nisshi.log
 
-otel: build docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-tansu-bucket prometheus-up grafana-up
-	target/debug/tansu broker 2>&1  | tee tansu.log
+otel: build docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-nisshi-bucket prometheus-up grafana-up
+	target/debug/nisshi broker 2>&1  | tee nisshi.log
 
-otel-up: docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-tansu-bucket prometheus-up grafana-up tansu-up
+otel-up: docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-nisshi-bucket prometheus-up grafana-up nisshi-up
 
-tansu-broker *args:
-    target/debug/tansu broker {{args}} 2>&1 >broker.log
+nisshi-broker *args:
+    target/debug/nisshi broker {{args}} 2>&1 >broker.log
 
 # run a broker with configuration from .env
-broker *args: (cargo-build "--bin" "tansu") docker-compose-down prometheus-up grafana-up db-up minio-up minio-ready-local minio-local-alias minio-tansu-bucket minio-lake-bucket lakehouse-catalog-up (tansu-broker args)
+broker *args: (cargo-build "--bin" "nisshi") docker-compose-down prometheus-up grafana-up db-up minio-up minio-ready-local minio-local-alias minio-nisshi-bucket minio-lake-bucket lakehouse-catalog-up (nisshi-broker args)
 
-xtdb: docker-compose-down minio-up minio-ready-local minio-local-alias minio-tansu-bucket minio-xtdb-bucket tansu-up xtdb-up
+xtdb: docker-compose-down minio-up minio-ready-local minio-local-alias minio-nisshi-bucket minio-xtdb-bucket nisshi-up xtdb-up
 
 # run a proxy with configuration from .env
 proxy *args:
-    target/debug/tansu proxy {{args}} 2>&1 >proxy.log
+    target/debug/nisshi proxy {{args}} 2>&1 >proxy.log
 
 
-# teardown compose, rebuild: minio, db, tansu and lake buckets
-server: (cargo-build "--bin" "tansu") docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-tansu-bucket minio-lake-bucket lakehouse-catalog-up
-	target/debug/tansu broker 2>&1  | tee tansu.log
+# teardown compose, rebuild: minio, db, nisshi and lake buckets
+server: (cargo-build "--bin" "nisshi") docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-nisshi-bucket minio-lake-bucket lakehouse-catalog-up
+	target/debug/nisshi broker 2>&1  | tee nisshi.log
 
-gdb: (cargo-build "--bin" "tansu") docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-tansu-bucket minio-lake-bucket
-    rust-gdb --args target/debug/tansu broker
+gdb: (cargo-build "--bin" "nisshi") docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-nisshi-bucket minio-lake-bucket
+    rust-gdb --args target/debug/nisshi broker
 
-lldb: (cargo-build "--bin" "tansu") docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-tansu-bucket minio-lake-bucket lakehouse-catalog-up
-    rust-lldb target/debug/tansu broker
+lldb: (cargo-build "--bin" "nisshi") docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-nisshi-bucket minio-lake-bucket lakehouse-catalog-up
+    rust-lldb target/debug/nisshi broker
 
-ci: docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-tansu-bucket minio-lake-bucket lakehouse-catalog-up lakehouse-accept-terms-of-use lakehouse-create-warehouse
+ci: docker-compose-down db-up minio-up minio-ready-local minio-local-alias minio-nisshi-bucket minio-lake-bucket lakehouse-catalog-up lakehouse-accept-terms-of-use lakehouse-create-warehouse
 
 # produce etc/data/observations.json with schema etc/schema/observation.avsc
 observation-produce: (cat-produce "observation" "etc/data/observations.json")
@@ -319,13 +319,13 @@ taxi-topic-populate: (cat-produce "taxi" "etc/data/trips.json")
 taxi-topic-consume: (cat-consume "taxi")
 
 # create taxi topic with generated fields with schema etc/schema/taxi.proto
-taxi-topic-create: (topic-create "taxi" "--partitions=1"  "--config=tansu.lake.normalize=true" "--config=tansu.lake.partition=meta.day" "--config=tansu.lake.z_order=vendor_id" "--config=tansu.lake.sink=true" "--config=tansu.batch=true" "--config=tansu.batch.max_records=200" "--config=tansu.batch.timeout_ms=1000")
+taxi-topic-create: (topic-create "taxi" "--partitions=1"  "--config=nisshi.lake.normalize=true" "--config=nisshi.lake.partition=meta.day" "--config=nisshi.lake.z_order=vendor_id" "--config=nisshi.lake.sink=true" "--config=nisshi.batch=true" "--config=nisshi.batch.max_records=200" "--config=nisshi.batch.timeout_ms=1000")
 
 # create taxi topic with schema etc/schema/taxi.proto
-taxi-topic-create-plain: (topic-create "taxi" "--partitions" "1" "--config" "tansu.lake.sink=true")
+taxi-topic-create-plain: (topic-create "taxi" "--partitions" "1" "--config" "nisshi.lake.sink=true")
 
 # create taxi topic with a flattened schema etc/schema/taxi.proto
-taxi-topic-create-normalize: (topic-create "taxi" "--partitions" "1" "--config" "tansu.lake.sink=true" "--config" "tansu.lake.normalize=true" "--config" "tansu.lake.normalize.separator=_" "--config" "tansu.lake.z_order=value_vendor_id")
+taxi-topic-create-normalize: (topic-create "taxi" "--partitions" "1" "--config" "nisshi.lake.sink=true" "--config" "nisshi.lake.normalize=true" "--config" "nisshi.lake.normalize.separator=_" "--config" "nisshi.lake.z_order=value_vendor_id")
 
 taxi-topic-generator: (generator "taxi" "--broker=tcp://localhost:9092" "--per-second=1" "--producers=16" "--batch-size=1" "--duration-seconds=60")
 
@@ -336,7 +336,7 @@ taxi-topic-delete: (topic-delete "taxi")
 taxi-duckdb-parquet: (duckdb-parquet "taxi")
 
 # taxi duckdb delta lake
-taxi-duckdb-delta: (duckdb "\"select * from delta_scan('s3://lake/tansu.taxi');\"")
+taxi-duckdb-delta: (duckdb "\"select * from delta_scan('s3://lake/nisshi.taxi');\"")
 
 # create employee topic with etc/schema/employee.proto
 employee-topic-create: (topic-create "employee")
@@ -345,12 +345,12 @@ employee-topic-create: (topic-create "employee")
 employee-produce: (cat-produce "employee" "etc/data/employees.json")
 
 # employee duckdb delta lake
-employee-duckdb-delta: (duckdb "\"select * from delta_scan('s3://lake/tansu.employee');\"")
+employee-duckdb-delta: (duckdb "\"select * from delta_scan('s3://lake/nisshi.employee');\"")
 
 
 # create customer topic with schema etc/schema/customer.proto
-customer-topic-create *args: (topic-create "customer" "--partitions=1"  "--config=tansu.lake.normalize=true" "--config=tansu.lake.partition=meta.day" "--config=tansu.lake.sink=true" "--config=tansu.batch=true" "--config=tansu.batch.max_records=200" "--config=tansu.batch.timeout_ms=1000" args)
+customer-topic-create *args: (topic-create "customer" "--partitions=1"  "--config=nisshi.lake.normalize=true" "--config=nisshi.lake.partition=meta.day" "--config=nisshi.lake.sink=true" "--config=nisshi.batch=true" "--config=nisshi.batch.max_records=200" "--config=nisshi.batch.timeout_ms=1000" args)
 
 customer-topic-generator *args: (generator "customer" args)
 
-customer-duckdb-delta: (duckdb "\"select * from delta_scan('s3://lake/tansu.customer');\"")
+customer-duckdb-delta: (duckdb "\"select * from delta_scan('s3://lake/nisshi.customer');\"")

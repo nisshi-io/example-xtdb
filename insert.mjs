@@ -13,7 +13,7 @@ const OID = {
 };
 
 var sql = postgres({
-  host: 'localhost',
+  host: '127.0.0.1',
   port: 5440,
   database: 'xtdb',
   fetch_types: false,

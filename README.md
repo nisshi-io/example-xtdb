@@ -1,4 +1,4 @@
-An example using XTDB with Tansu
+An example using XTDB with Nisshi
 
 ```sh
 just xtdb
